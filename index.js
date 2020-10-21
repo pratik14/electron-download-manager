@@ -244,7 +244,7 @@ const bulkDownload = (options, callback) => {
             let finishedCount = finished.length;
 
             if (typeof options.onResult === 'function') {
-                options.onResult(finishedCount, errorsCount, itemInfo.url);
+                options.onResult(finishedCount, errorsCount, error, itemInfo.url);
             }
 
             if ((finishedCount + errorsCount) === urlsCount) {
