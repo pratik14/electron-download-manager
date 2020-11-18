@@ -188,7 +188,10 @@ const download = (options, callback) => {
 
             const fileOffset = stats.size;
 
-            const serverFileSize = parseInt(response.headers['content-length']);
+            let serverFileSize = parseInt(response.headers['content-length']);
+            if(serverFileSize === 1){
+              serverFileSize = parseInt(response.headers['content-range'].split(" ")[1].split("/")[1])
+            }
 
             console.log(filename + ' exists, verifying file size: (' + fileOffset + ' / ' + serverFileSize + ' downloaded)');
 
