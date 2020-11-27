@@ -35,6 +35,40 @@ const _popQueueItem = (url) => {
     ].join(typeof separator !== 'undefined' ?  separator : ':' );
 }
 
+const _timeHumanReadable = (seconds) => {
+    const minutes = seconds / (60);
+    const hours = seconds / (60 * 60);
+    const days = seconds / (60 * 60 * 24);
+  
+    if (seconds < 60) {
+      return seconds.toFixed(1) + " Sec";
+    } else if (minutes < 60) {
+      return minutes.toFixed(1) + " Min";
+    } else if (hours < 24) {
+      return hours.toFixed(1) + " Hrs";
+    } else {
+      return days.toFixed(1) + " Days";
+    }
+}
+
+const _movingAverageSpeed = (speedArr) => {
+    let i;
+  let averageSpeed = []
+  for (i = 0; i < speedArr.length; i++) {
+    if(i === 0){ 
+        averageSpeed[0] = speedArr[0]
+    }
+    else if(i === 1){
+        averageSpeed[i] = (speedArr[1] + speedArr[0])/2
+    }
+    else{
+        const weight = 1/i;
+        averageSpeed[i] = speedArr[i] * weight + averageSpeed[i-1] * (1 - weight)
+    }
+    }
+    return averageSpeed.slice(-1).pop()
+}
+
 function _registerListener(win, opts = {}) {
 
     lastWindowCreated = win;
@@ -52,10 +86,11 @@ function _registerListener(win, opts = {}) {
             const folder = queueItem.downloadFolder || downloadFolder
             const filePath = path.join(folder, queueItem.path, itemFilename);
 
+                        const speedArr = []
+                        let prevTotalReceivedByte = 0
+                        let prevReceivedTime = new Date()
             const totalBytes = item.getTotalBytes();
-            let speedValue = 0;
-            let receivedBytes;
-            let PreviousReceivedBytes;
+
 
             item.setSavePath(filePath);
 
@@ -65,29 +100,36 @@ function _registerListener(win, opts = {}) {
             }
 
             item.on('updated', () => {
-
-                receivedBytes = item.getReceivedBytes();
-                ReceivedBytesArr.push(receivedBytes);
-                if (ReceivedBytesArr.length >= 2) {
-                    PreviousReceivedBytes = ReceivedBytesArr.shift();
-                    speedValue = Math.max(PreviousReceivedBytes, ReceivedBytesArr[0]) - Math.min(PreviousReceivedBytes, ReceivedBytesArr[0]);
-                }
-                const progress = {
-                    progress: receivedBytes * 100 / totalBytes,
-                    speedBytes: speedValue,
-                    speed: _bytesToSize(speedValue) + '/sec',
-                    remainingBytes: totalBytes - receivedBytes,
-                    remaining: _bytesToSize(totalBytes - receivedBytes),
-                    totalBytes: totalBytes,
-                    total: _bytesToSize(totalBytes),
-                    downloadedBytes: receivedBytes,
-                    downloaded: _bytesToSize(receivedBytes),
-                }
+                            const currentTotalReceivedByte = item.getReceivedBytes()
+                            const receivedByteChunk = currentTotalReceivedByte - prevTotalReceivedByte
 
 
-                if (typeof queueItem.onProgress === 'function') {
-                    queueItem.onProgress(progress, item);
-                }
+                            if (typeof queueItem.onProgress === 'function' && currentTotalReceivedByte > 0 && currentTotalReceivedByte < totalBytes && receivedByteChunk > 0) {
+                                const currentTime = new Date()
+                                const timeLapsedInSec = (currentTime - prevReceivedTime)/1000
+                                const speed = receivedByteChunk / timeLapsedInSec
+                                speedArr.push(speed)
+                                const averageSpeed =  _movingAverageSpeed(speedArr)   
+                                const remainingBytes = totalBytes - currentTotalReceivedByte
+                                const remainingTime = remainingBytes / averageSpeed
+
+                                const progress = {
+                                    progress: currentTotalReceivedByte * 100 / totalBytes,
+                                    speed: _bytesToSize(averageSpeed) + '/sec',
+                                    remainingBytes: remainingBytes,
+                                    remaining: _bytesToSize(remainingBytes),
+                                    totalBytes: totalBytes,
+                                    total: _bytesToSize(totalBytes),
+                                    remainingTime: _timeHumanReadable(remainingTime),
+                                    downloadedBytes: currentTotalReceivedByte,
+                                    downloaded: _bytesToSize(currentTotalReceivedByte),
+                                }	
+
+                                queueItem.onProgress(progress, item);
+                                
+                                prevReceivedTime = currentTime
+                                prevTotalReceivedByte = currentTotalReceivedByte
+                            }
             });
 
             item.on('done', (e, state) => {
